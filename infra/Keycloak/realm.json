@@ -1,0 +1,64 @@
+{
+    "id": "returnguard",
+    "realm": "returnguard",
+    "enabled": true,
+    "clients": [
+        {
+            "clientId": "nextjs-client",
+            "enabled": true,
+            "clientAuthenticatorType": "client-secret",
+            "secret": "returnguard-secret-123",
+            "redirectUris": [
+                "http://localhost:3000/*"
+            ],
+            "webOrigins": [
+                "http://localhost:3000"
+            ],
+            "publicClient": false,
+            "protocol": "openid-connect"
+        }
+    ],
+    "roles": {
+        "realm": [
+            {
+                "name": "customer"
+            },
+            {
+                "name": "reviewer"
+            },
+            {
+                "name": "admin"
+            }
+        ]
+    },
+    "users": [
+        {
+            "username": "customer1",
+            "enabled": true,
+            "credentials": [
+                {
+                    "type": "password",
+                    "value": "password",
+                    "temporary": false
+                }
+            ],
+            "realmRoles": [
+                "customer"
+            ]
+        },
+        {
+            "username": "reviewer1",
+            "enabled": true,
+            "credentials": [
+                {
+                    "type": "password",
+                    "value": "password",
+                    "temporary": false
+                }
+            ],
+            "realmRoles": [
+                "reviewer"
+            ]
+        }
+    ]
+}
