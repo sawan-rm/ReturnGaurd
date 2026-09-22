@@ -32,6 +32,20 @@ services:
       redis:
         condition: service_healthy
 
+
+  # ── Worker (Background Jobs) ──────────────
+  worker:
+    build: ./backend
+    command: arq app.worker.WorkerSettings
+    env_file: .env
+    environment:
+      DATABASE_URL: "postgresql+asyncpg://returnguard:returnguard_secret@postgres:5432/returnguard"
+    volumes:
+      - ./backend:/app
+    depends_on:
+      - postgres
+      - redis    
+
   # ── Postgres ──────────────────────────────
   postgres:
     image: postgres:16-alpine
