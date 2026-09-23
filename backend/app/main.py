@@ -1,24 +1,34 @@
 import asyncio
 from contextlib import asynccontextmanager
 from fastapi import FastAPI, WebSocket
+from fastapi.middleware.cors import CORSMiddleware
 from app.database import engine
 from app.models import Base
 from app.routers import health, returns, orders
-from app.ws import redis_listener, active_connections # <-- NEW
+from app.ws import redis_listener, active_connections
+
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
-    
-    # Start Redis pub/sub listener in background
     task = asyncio.create_task(redis_listener())
     yield
     task.cancel()
 
+
 app = FastAPI(title="ReturnGuard API", version="0.1.0", lifespan=lifespan)
 
-# <-- NEW WEBSOCKET ROUTE
+# ── CORS ─────────────────────────────────────
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["http://localhost:5173"],  # Vite default port
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+# ── WebSocket ─────────────────────────────────
 @app.websocket("/ws")
 async def websocket_endpoint(websocket: WebSocket):
     await websocket.accept()

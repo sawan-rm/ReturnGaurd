@@ -1,26 +1,22 @@
-"use client"; // <-- Add this to make it a client component!
 import { useState, useEffect } from "react";
-import StatusBadge from "../src/components/StatusBadge";
-import type { ReturnRequest } from "../src/lib/api";
+import StatusBadge from "./StatusBadge";
+
+interface ReturnRequest {
+    id: string; order_id: string; reason: string;
+    status: string; risk_score: number | null; created_at: string;
+}
 
 export default function ReturnCard({ ret: initialRet }: { ret: ReturnRequest }) {
     const [ret, setRet] = useState(initialRet);
 
     useEffect(() => {
-        // Listen for WebSocket updates
         const ws = new WebSocket("ws://localhost:8000/ws");
-
         ws.onmessage = (event) => {
             const update = JSON.parse(event.data);
             if (update.id === ret.id) {
-                setRet(prev => ({
-                    ...prev,
-                    status: update.status,
-                    risk_score: update.risk_score ?? prev.risk_score
-                }));
+                setRet(prev => ({ ...prev, status: update.status, risk_score: update.risk_score ?? prev.risk_score }));
             }
         };
-
         return () => ws.close();
     }, [ret.id]);
 

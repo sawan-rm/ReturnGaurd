@@ -1,18 +1,18 @@
-import ReturnCard from "../../components/ReturnCard";
-import type { ReturnRequest } from "../../lib/api";
+import { useState, useEffect } from "react";
+import ReturnCard from "../components/ReturnCard";
+import { listReturns } from "../lib/api";
+import type { ReturnRequest } from "../lib/api";
 
-async function getReturns(): Promise<ReturnRequest[]> {
-    try {
-        const res = await fetch("http://backend:8000/api/returns/", { cache: "no-store" });
-        if (!res.ok) return [];
-        return res.json();
-    } catch {
-        return [];
-    }
-}
+export default function ReviewerPage() {
+    const [returns, setReturns] = useState<ReturnRequest[]>([]);
+    const [loading, setLoading] = useState(true);
 
-export default async function ReviewerPage() {
-    const returns = await getReturns();
+    useEffect(() => {
+        listReturns()
+            .then(setReturns)
+            .catch(console.error)
+            .finally(() => setLoading(false));
+    }, []);
 
     const counts = {
         total: returns.length,
@@ -23,14 +23,9 @@ export default async function ReviewerPage() {
 
     return (
         <div>
-            <h1 style={{ fontSize: "1.75rem", fontWeight: 700, marginBottom: "0.5rem" }}>
-                Reviewer Dashboard
-            </h1>
-            <p style={{ color: "var(--text-muted)", marginBottom: "2rem" }}>
-                All return requests — AI decisions shown when available.
-            </p>
+            <h1 style={{ fontSize: "1.75rem", fontWeight: 700, marginBottom: "0.5rem" }}>Reviewer Dashboard</h1>
+            <p style={{ color: "var(--text-muted)", marginBottom: "2rem" }}>All return requests — AI decisions shown when available.</p>
 
-            {/* Stats row */}
             <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: "1rem", marginBottom: "2rem" }}>
                 {[
                     { label: "Total", value: counts.total, color: "var(--accent)" },
@@ -45,11 +40,10 @@ export default async function ReviewerPage() {
                 ))}
             </div>
 
-            {/* Returns list */}
-            {returns.length === 0 ? (
-                <div className="card" style={{ textAlign: "center", color: "var(--text-muted)", padding: "3rem" }}>
-                    No returns yet. Submit one from the shop!
-                </div>
+            {loading ? (
+                <div className="card" style={{ textAlign: "center", color: "var(--text-muted)", padding: "3rem" }}>Loading...</div>
+            ) : returns.length === 0 ? (
+                <div className="card" style={{ textAlign: "center", color: "var(--text-muted)", padding: "3rem" }}>No returns yet. Submit one from the shop!</div>
             ) : (
                 <div style={{ display: "flex", flexDirection: "column", gap: "1rem" }}>
                     {returns.map(ret => <ReturnCard key={ret.id} ret={ret} />)}

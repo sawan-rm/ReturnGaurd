@@ -1,20 +1,15 @@
 services:
-  # ── Frontend (Next.js) ────────────────────
+  # ── Frontend (Vite + React) ───────────────
   frontend:
     build: ./frontend
     ports:
-      - "3000:3000"
-    environment:
-      NEXT_PUBLIC_API_URL: "http://localhost:8000"
-      BACKEND_URL: "http://backend:8000"
-    extra_hosts:
-      - "localhost:host-gateway"
+      - "5173:5173"
     volumes:
       - ./frontend:/app
       - /app/node_modules
-      - /app/.next
     depends_on:
       - backend
+
 
   # ── Backend (FastAPI) ─────────────────────
   backend:

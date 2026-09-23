@@ -43,6 +43,7 @@ async def get_current_user(credentials: HTTPAuthorizationCredentials = Depends(s
         )
         return payload
     except Exception as e:
+        print(f"Auth error: {str(e)}")
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail=f"Invalid authentication credentials: {str(e)}",

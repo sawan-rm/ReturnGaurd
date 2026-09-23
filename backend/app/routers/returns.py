@@ -9,6 +9,10 @@ from app.models import ReturnRequest, Order
 from app.schemas import ReturnCreate, ReturnRead, ReturnDetail
 from app.auth import get_current_user
 
+from arq import create_pool
+from arq.connections import RedisSettings
+from app.config import settings
+
 router = APIRouter(prefix="/returns", tags=["returns"])
 
 
@@ -23,6 +27,11 @@ async def create_return(payload: ReturnCreate, db: AsyncSession = Depends(get_db
     db.add(ret)
     await db.commit()
     await db.refresh(ret)
+
+    # Put the return-processing job into Redis
+    redis = await create_pool(RedisSettings.from_dsn(settings.redis_url))
+    await redis.enqueue_job('process_return', str(ret.id))
+    
     return ret
 
 

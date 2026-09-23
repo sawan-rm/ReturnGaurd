@@ -9,12 +9,12 @@
             "clientAuthenticatorType": "client-secret",
             "secret": "returnguard-secret-123",
             "redirectUris": [
-                "http://localhost:3000/*"
+                "http://localhost:5173/*"
             ],
             "webOrigins": [
-                "http://localhost:3000"
+                "http://localhost:5173"
             ],
-            "publicClient": false,
+            "publicClient": true,
             "protocol": "openid-connect"
         }
     ],
