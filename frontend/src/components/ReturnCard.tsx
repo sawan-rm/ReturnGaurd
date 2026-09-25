@@ -3,6 +3,7 @@ import StatusBadge from "./StatusBadge";
 
 interface ReturnRequest {
     id: string; order_id: string; reason: string;
+    photo_url?: string | null;
     status: string; risk_score: number | null; created_at: string;
 }
 
@@ -28,7 +29,16 @@ export default function ReturnCard({ ret: initialRet }: { ret: ReturnRequest }) 
                 </span>
                 <StatusBadge status={ret.status} />
             </div>
-            <p style={{ color: "var(--text)", lineHeight: 1.5 }}>{ret.reason}</p>
+            <div style={{ display: "flex", gap: "1rem" }}>
+                {ret.photo_url && (
+                    <img 
+                        src={ret.photo_url} 
+                        alt="Return Item" 
+                        style={{ width: "80px", height: "80px", objectFit: "cover", borderRadius: "8px" }} 
+                    />
+                )}
+                <p style={{ color: "var(--text)", lineHeight: 1.5, margin: 0 }}>{ret.reason}</p>
+            </div>
             <div style={{ display: "flex", justifyContent: "space-between", fontSize: "0.82rem", color: "var(--text-muted)" }}>
                 <span>Order: {ret.order_id.slice(0, 8)}</span>
                 {ret.risk_score !== null && (

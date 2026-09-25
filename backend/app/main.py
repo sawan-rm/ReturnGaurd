@@ -4,6 +4,7 @@ from fastapi import FastAPI, WebSocket
 from fastapi.middleware.cors import CORSMiddleware
 from app.database import engine
 from app.models import Base
+from app.minio_client import ensure_bucket_exists
 from app.routers import health, returns, orders
 from app.ws import redis_listener, active_connections
 
@@ -12,6 +13,10 @@ from app.ws import redis_listener, active_connections
 async def lifespan(app: FastAPI):
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
+    try:
+        ensure_bucket_exists()
+    except Exception as e:
+        print(f"⚠️ MinIO setup failed: {e}")
     task = asyncio.create_task(redis_listener())
     yield
     task.cancel()

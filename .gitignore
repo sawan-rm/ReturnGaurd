@@ -16,3 +16,4 @@ Thumbs.db
 ml/models/*.pkl
 ml/models/*.joblib
 ml/data/*.csv
+implementation_plan.md

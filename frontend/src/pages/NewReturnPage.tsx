@@ -11,6 +11,7 @@ export default function NewReturnPage({ kc }: Props) {
     const [orders, setOrders] = useState<Order[]>([]);
     const [orderId, setOrderId] = useState("");
     const [reason, setReason] = useState("");
+    const [photo, setPhoto] = useState<File | null>(null);
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState("");
 
@@ -27,7 +28,7 @@ export default function NewReturnPage({ kc }: Props) {
         if (!kc.token) { setError("Not authenticated."); return; }
         setLoading(true); setError("");
         try {
-            await createReturn(orderId, reason, kc.token);
+            await createReturn(orderId, reason, kc.token, photo || undefined);
             navigate("/reviewer");
         } catch (err: unknown) {
             setError(err instanceof Error ? err.message : "Something went wrong");
@@ -60,9 +61,10 @@ export default function NewReturnPage({ kc }: Props) {
 
                 <div>
                     <label htmlFor="photo">Photo (optional)</label>
-                    <input id="photo" type="file" accept="image/*" style={{ padding: "0.5rem" }} />
+                    <input id="photo" type="file" accept="image/*" style={{ padding: "0.5rem" }} 
+                           onChange={e => e.target.files && setPhoto(e.target.files[0])} />
                     <span style={{ fontSize: "0.78rem", color: "var(--text-muted)", marginTop: "0.25rem", display: "block" }}>
-                        MinIO photo upload coming in Phase 5.
+                        Upload a clear photo of the item if damaged.
                     </span>
                 </div>
 

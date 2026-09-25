@@ -21,7 +21,7 @@ export default function Navbar({ kc }: Props) {
             justifyContent: "space-between", height: "60px",
             position: "sticky", top: 0, zIndex: 100,
         }}>
-            <span style={{ fontWeight: 700, fontSize: "1.1rem", color: "var(--accent-light)" }}>
+            <span style={{ fontWeight: 700, fontSize: "1.1rem", color: "var(--accent-light)", cursor: 'pointer' }}>
                 🛡️ ReturnGuard
             </span>
             <div style={{ display: "flex", gap: "0.5rem", alignItems: "center" }}>

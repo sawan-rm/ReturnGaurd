@@ -1,12 +1,14 @@
 from uuid import UUID
-from fastapi import APIRouter, Depends, HTTPException
+import uuid
+from fastapi import APIRouter, Depends, HTTPException, Form, UploadFile, File
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from app.database import get_db
 from app.models import ReturnRequest, Order
-from app.schemas import ReturnCreate, ReturnRead, ReturnDetail
+from app.schemas import ReturnRead, ReturnDetail
+from app.minio_client import get_minio_client
 from app.auth import get_current_user
 
 from arq import create_pool
@@ -17,13 +19,33 @@ router = APIRouter(prefix="/returns", tags=["returns"])
 
 
 @router.post("/", response_model=ReturnRead, status_code=201)
-async def create_return(payload: ReturnCreate, db: AsyncSession = Depends(get_db), current_user: dict = Depends(get_current_user)):
+async def create_return(
+    order_id: UUID = Form(...),
+    reason: str = Form(...),
+    photo: UploadFile | None = File(None),
+    db: AsyncSession = Depends(get_db),
+    current_user: dict = Depends(get_current_user)
+):
     # Check that the order exists
-    order = await db.get(Order, payload.order_id)
+    order = await db.get(Order, order_id)
     if not order:
         raise HTTPException(status_code=404, detail="Order not found")
 
-    ret = ReturnRequest(order_id=payload.order_id, reason=payload.reason)
+    photo_url = None
+    if photo:
+        minio_client = get_minio_client()
+        filename = f"{uuid.uuid4()}-{photo.filename}"
+        minio_client.put_object(
+            settings.minio_bucket,
+            filename,
+            photo.file,
+            length=-1,
+            part_size=10*1024*1024,
+            content_type=photo.content_type
+        )
+        photo_url = f"http://localhost:9000/{settings.minio_bucket}/{filename}"
+
+    ret = ReturnRequest(order_id=order_id, reason=reason, photo_url=photo_url)
     db.add(ret)
     await db.commit()
     await db.refresh(ret)

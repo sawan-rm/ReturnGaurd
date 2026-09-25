@@ -27,11 +27,18 @@ export async function listReturns(): Promise<ReturnRequest[]> {
     return res.json();
 }
 
-export async function createReturn(order_id: string, reason: string, token: string): Promise<ReturnRequest> {
+export async function createReturn(order_id: string, reason: string, token: string, photo?: File): Promise<ReturnRequest> {
+    const formData = new FormData();
+    formData.append("order_id", order_id);
+    formData.append("reason", reason);
+    if (photo) {
+        formData.append("photo", photo);
+    }
+
     const res = await fetch(`${BASE}/returns/`, {
         method: "POST",
-        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
-        body: JSON.stringify({ order_id, reason }),
+        headers: { Authorization: `Bearer ${token}` },
+        body: formData,
     });
     if (!res.ok) throw new Error("Failed to create return");
     return res.json();
