@@ -8,7 +8,11 @@ class Settings(BaseSettings):
     minio_access_key: str = "minioadmin"
     minio_secret_key: str = "minioadmin_secret"
     minio_bucket: str = "return-photos"
-
+    smtp_host: str = "localhost"
+    smtp_port: int = 1025
+    email_from: str = "noreply@returnguard.io"
+    groq_api_key: str = ""
+    
     class Config:
         env_file = ".env"
 

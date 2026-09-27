@@ -18,7 +18,12 @@ export default function ReturnCard({ ret: initialRet }: { ret: ReturnRequest }) 
                 setRet(prev => ({ ...prev, status: update.status, risk_score: update.risk_score ?? prev.risk_score }));
             }
         };
-        return () => ws.close();
+        return () => {
+            if (ws.readyState === WebSocket.OPEN || ws.readyState === WebSocket.CONNECTING) {
+                // Delay close slightly to prevent closing before connection finishes establishing in strict mode
+                setTimeout(() => ws.close(), 100);
+            }
+        };
     }, [ret.id]);
 
     return (

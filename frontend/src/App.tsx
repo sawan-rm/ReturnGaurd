@@ -9,7 +9,7 @@ interface Props { kc: Keycloak; }
 
 export default function App({ kc }: Props) {
     return (
-        <BrowserRouter>
+        <BrowserRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
             <Navbar kc={kc} />
             <main style={{ maxWidth: "1100px", margin: "0 auto", padding: "2rem 1rem" }}>
                 <Routes>

@@ -9,6 +9,7 @@ from app.models import ReturnRequest, ReturnStatus, Order, Decision, DecisionOut
 from app.config import settings
 from app.ws import broadcast_update
 from app.graph import return_graph
+from app.email_service import send_decision_email
 
 
 async def process_return(ctx, return_id: str):
@@ -21,8 +22,19 @@ async def process_return(ctx, return_id: str):
             print(f"❌ Return {return_id} not found!")
             return
         ret.status = ReturnStatus.processing
+        
         # Pre-load the order for the graph
-        order: Order = await session.get(Order, ret.order_id)
+        order = await session.get(Order, ret.order_id)
+        order_user_id = order.user_id
+        order_product_name = order.product_name
+        order_product_category = order.product_category
+        order_amount = order.amount
+        order_ordered_at = order.ordered_at
+        
+        # Save return reason and photo_url before closing session
+        ret_reason = ret.reason
+        ret_photo_url = ret.photo_url
+        
         await session.commit()
 
     await broadcast_update(return_id, "processing")
@@ -33,21 +45,21 @@ async def process_return(ctx, return_id: str):
         stmt = (
             select(ReturnRequest)
             .join(Order, ReturnRequest.order_id == Order.id)
-            .where(Order.user_id == order.user_id)
+            .where(Order.user_id == order_user_id)
         )
         result = await session.execute(stmt)
         past_returns = result.scalars().all()
         past_return_count = max(0, len(past_returns) - 1)  # exclude current
 
-    days_since_order = (datetime.now(timezone.utc) - order.ordered_at.replace(tzinfo=timezone.utc)).days
+    days_since_order = (datetime.now(timezone.utc) - order_ordered_at.replace(tzinfo=timezone.utc)).days
 
     initial_state = {
         "return_id": return_id,
         "reason": ret.reason,
         "photo_url": ret.photo_url,
-        "product_name": order.product_name,
-        "product_category": order.product_category,
-        "amount": order.amount,
+        "product_name": order_product_name,
+        "product_category": order_product_category,
+        "amount": order_amount,
         "days_since_order": days_since_order,
         "past_return_count": past_return_count,
         "fraud_score": 0.0,
@@ -106,7 +118,24 @@ async def process_return(ctx, return_id: str):
     print(f"   Fraud score: {fraud_score:.1f}/100")
     print(f"   Explanation: {explanation[:80]}...")
 
-    # ── 6. Broadcast live update to the frontend ──────────────────────────────
+    # ── 6. Send automated email notification ──────────────────────────────────
+    # Use a placeholder email since Keycloak user info isn't available in the worker.
+    # In production you'd look up the user's email from the user_id.
+    customer_email = f"customer-{str(order_user_id)[:8]}@returnguard.io"
+    try:
+        await asyncio.to_thread(
+            send_decision_email,
+            to_email=customer_email,
+            decision=final_decision,
+            product_name=order_product_name,
+            amount=order_amount,
+            explanation=explanation,
+            return_id=return_id,
+        )
+    except Exception as e:
+        print(f"⚠️  Email send failed: {e}")
+
+    # ── 7. Broadcast live update to the frontend ──────────────────────────────
     await broadcast_update(return_id, new_status.value, round(fraud_score / 100, 4))
 
 

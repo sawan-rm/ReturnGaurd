@@ -20,6 +20,9 @@ services:
     environment:
       DATABASE_URL: "postgresql+asyncpg://returnguard:returnguard_secret@postgres:5432/returnguard"
       GEMINI_API_KEY: ${GEMINI_API_KEY}
+      GROQ_API_KEY: ${GROQ_API_KEY}
+      MINIO_ENDPOINT: minio:9000
+      SMTP_HOST: mailhog
     volumes:
       - ./backend:/app
     depends_on:
@@ -37,6 +40,9 @@ services:
     environment:
       DATABASE_URL: "postgresql+asyncpg://returnguard:returnguard_secret@postgres:5432/returnguard"
       GEMINI_API_KEY: ${GEMINI_API_KEY}
+      GROQ_API_KEY: ${GROQ_API_KEY}
+      MINIO_ENDPOINT: minio:9000
+      SMTP_HOST: mailhog
     volumes:
       - ./backend:/app
     depends_on:
