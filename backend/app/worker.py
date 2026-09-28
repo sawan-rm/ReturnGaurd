@@ -8,9 +8,10 @@ from app.database import async_session
 from app.models import ReturnRequest, ReturnStatus, Order, Decision, DecisionOutcome
 from app.config import settings
 from app.ws import broadcast_update
-from app.graph import return_graph
+from app.graph import return_graph_builder
 from app.email_service import send_decision_email
-
+from langgraph.checkpoint.postgres.aio import AsyncPostgresSaver
+from psycopg_pool import AsyncConnectionPool
 
 async def process_return(ctx, return_id: str):
     print(f"⚙️  Worker started processing return {return_id}...")
@@ -55,8 +56,8 @@ async def process_return(ctx, return_id: str):
 
     initial_state = {
         "return_id": return_id,
-        "reason": ret.reason,
-        "photo_url": ret.photo_url,
+        "reason": ret_reason,
+        "photo_url": ret_photo_url,
         "product_name": order_product_name,
         "product_category": order_product_category,
         "amount": order_amount,
@@ -68,10 +69,35 @@ async def process_return(ctx, return_id: str):
         "explanation": "",
     }
 
-    # ── 3. Run the LangGraph pipeline ────────────────────────────────────────
+    # ── 3. Run the LangGraph pipeline with Checkpointer ──────────────────────
     print(f"🤖 Running LangGraph for return {return_id}...")
+    
+    # The checkpointer needs a psycopg3 connection string (not asyncpg)
+    psycopg_url = settings.database_url.replace("+asyncpg", "")
+    
     try:
-        result_state = await asyncio.to_thread(return_graph.invoke, initial_state)
+        # Create connection pool for checkpointer
+        # autocommit=True is required so checkpointer.setup() can run
+        # CREATE INDEX CONCURRENTLY, which cannot run inside a transaction
+        async with AsyncConnectionPool(
+            conninfo=psycopg_url,
+            max_size=10,
+            kwargs={"autocommit": True},
+        ) as pool:
+            # In langgraph-checkpoint-postgres v2+, AsyncPostgresSaver is NOT a context manager
+            checkpointer = AsyncPostgresSaver(pool)
+            # This creates the checkpoint tables if they don't exist
+            await checkpointer.setup()
+            
+            # Compile graph with memory
+            graph = return_graph_builder.compile(checkpointer=checkpointer)
+            
+            # We use the return_id as the thread_id so memory is tied to this specific return
+            config = {"configurable": {"thread_id": return_id}}
+            
+            # ainvoke runs async!
+            result_state = await graph.ainvoke(initial_state, config)
+            
     except Exception as e:
         print(f"❌ LangGraph error: {e}")
         result_state = {

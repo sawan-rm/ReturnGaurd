@@ -12,6 +12,7 @@ class Settings(BaseSettings):
     smtp_port: int = 1025
     email_from: str = "noreply@returnguard.io"
     groq_api_key: str = ""
+    gemini_api_key: str = ""
     
     class Config:
         env_file = ".env"
