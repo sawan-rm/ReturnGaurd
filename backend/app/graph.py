@@ -5,6 +5,12 @@ from langgraph.graph import StateGraph, END
 from langchain_core.messages import SystemMessage, HumanMessage
 from langchain_groq import ChatGroq
 from app.config import settings
+from sentence_transformers import SentenceTransformer
+import asyncio
+from qdrant_client import AsyncQdrantClient
+
+embedding = SentenceTransformer("all-MiniLM-L6-v2")
+qdrant_sync = AsyncQdrantClient(url=settings.qdrant_url)
 
 class AgentState(TypedDict):
     return_id: str
@@ -19,6 +25,7 @@ class AgentState(TypedDict):
     policy_ok: bool
     final_decision: str | None
     explanation: str
+    found_policy: str
 
 # 1. Initialize Groq (we use llama3-8b for speed and cost efficiency)
 llm = ChatGroq(
@@ -56,10 +63,51 @@ def fraud_detector_node(state: AgentState):
 
 # 3. Policy Engine Node (Deterministic)
 def policy_engine_node(state: AgentState):
-    # E.g., returns only allowed within 30 days
-    is_ok = state['days_since_order'] <= 30
-    return {"policy_ok": is_ok}
+    print("📜 Searching Qdrant for policy...")
+    search_query = f"Return policy for {state['product_category']}"
+    vector = embedding.encode(search_query).tolist()
+    
+    try:
+        search_result = qdrant_sync.search(
+            collection_name="return_policy",
+            query_vector=vector,
+            limit=2
+        )
+        policies = [hit.payload["text"] for hit in search_result]
+        context = " ".join(policies)
 
+
+    except Exception as e:
+        print(f"⚠️ Qdrant search failed: {e}")
+        context = "Default: 30 day return window."
+
+    prompt = f"""You are a strict policy adherence engine.
+    Read the following company policy excerpts and determine if the customer's request is allowed.
+    
+    Policy Excerpts:
+    {context}
+    
+    Customer Request:
+    Item: {state['product_name']} ({state['product_category']})
+    Days since order: {state['days_since_order']}
+    Reason: {state['reason']}
+    
+    Return exactly one word: 'YES' if it complies with the policy, or 'NO' if it violates it."""
+
+    try:
+        response = llm.invoke([SystemMessage(content=prompt)])
+        result = response.content.strip().upper()
+    except Exception as e:
+        print(f"Error calling Groq in policy node: {e}")
+        result = "YES"
+
+    is_ok = "YES" in result
+
+    return {
+        "policy_ok": is_ok,
+        "found_policy": context
+    }
+    
 # 4. Decision Maker Node
 def decision_maker_node(state: AgentState):
     if not state['policy_ok']:

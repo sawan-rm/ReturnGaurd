@@ -109,10 +109,21 @@ services:
       - "8080:8080"
     volumes:
       - ./infra/keycloak/realm.json:/opt/keycloak/data/import/realm.json
+  # ── qdrant(vector database) ──────────
 
-    
+  qdrant:
+    image: qdrant/qdrant:v1.8.2
+    ports:
+      - "6333:6333"
+      - "6334:6334"
+    volumes:
+      - qdrant_data:/qdrant/storage
+
+
 volumes:
   pg_data:
   redis_data:
   minio_data:
+  qdrant_data:
+
   

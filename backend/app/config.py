@@ -13,7 +13,9 @@ class Settings(BaseSettings):
     email_from: str = "noreply@returnguard.io"
     groq_api_key: str = ""
     gemini_api_key: str = ""
-    
+    qdrant_url: str = "http://localhost:6333"
+
+
     class Config:
         env_file = ".env"
 
