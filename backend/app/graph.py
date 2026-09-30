@@ -178,6 +178,15 @@ def explanation_agent_node(state: AgentState):
         
     return {"customer_email_draft": draft}
 
+def governance_gate_node(state: AgentState):
+    print("🔒 Human approved the denial! Governance Gate passed.")
+    return {}
+
+def route_after_explanation(state: AgentState):
+    if state['final_decision'] == 'denied':
+        return "governance_gate"
+
+    return END
 
 
 # 5. Build and compile the graph (without compiling checkpointer here, we do it at runtime)
@@ -188,13 +197,15 @@ builder.add_node("policy_engine", policy_engine_node)
 builder.add_node("decision_maker", decision_maker_node)
 builder.add_node("critic_agent", critic_agent_node)
 builder.add_node("explanation_agent", explanation_agent_node)
+builder.add_node("governance_gate", governance_gate_node)
 
 builder.set_entry_point("fraud_detector")
 builder.add_edge("fraud_detector", "policy_engine")
 builder.add_edge("policy_engine", "decision_maker")
 builder.add_edge("decision_maker", "critic_agent")
 builder.add_edge("critic_agent", "explanation_agent")
-builder.add_edge("explanation_agent", END)
+builder.add_conditional_edges("explanation_agent", route_after_explanation)
+builder.add_edge("governance_gate", END)
 
 
 

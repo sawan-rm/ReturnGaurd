@@ -90,14 +90,34 @@ async def process_return(ctx, return_id: str):
             await checkpointer.setup()
             
             # Compile graph with memory
-            graph = return_graph_builder.compile(checkpointer=checkpointer)
+            # 1. Add the interrupt_before argument!
+            graph = return_graph_builder.compile(checkpointer=checkpointer, interrupt_before=["governance_gate"])
             
             # We use the return_id as the thread_id so memory is tied to this specific return
             config = {"configurable": {"thread_id": return_id}}
             
             # ainvoke runs async!
             result_state = await graph.ainvoke(initial_state, config)
-            
+
+            # 2. Check if the graph is currently paused
+            snapshot = await graph.aget_state(config)
+
+            if snapshot.next and "governance_gate" in snapshot.next:
+                print(f"⏸️ Return {return_id} paused at Governance Gate for human review!")
+
+                # Override the status to escalated so it appears on the human Reviewer Dashboard
+                final_decision = "escalated"
+                explanation = "AI proposed DENY. Waiting for human confirmation at the Governance Gate."
+
+                # We pull the actual fraud score from the paused state
+                fraud_score = snapshot.values.get("fraud_score", 50.0)
+            else:
+                # The graph finished successfully (it was approved or naturally escalated)
+                final_decision = result_state["final_decision"]
+                explanation = result_state["explanation"]
+                fraud_score = result_state["fraud_score"]
+                
+
     except Exception as e:
         print(f"❌ LangGraph error: {e}")
         result_state = {
