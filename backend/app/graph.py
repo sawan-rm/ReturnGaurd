@@ -24,8 +24,13 @@ class AgentState(TypedDict):
     fraud_score: float
     policy_ok: bool
     final_decision: str | None
-    explanation: str
+    # explanation: str
     found_policy: str
+    critic_approved: bool
+    # final_decision: str | None
+    explanation: str
+    customer_email_draft: str | None
+
 
 # 1. Initialize Groq (we use llama3-8b for speed and cost efficiency)
 llm = ChatGroq(
@@ -127,16 +132,71 @@ def decision_maker_node(state: AgentState):
         "explanation": "Return automatically approved. Your refund will be processed shortly."
     }
 
+def critic_agent_node(state: AgentState):
+    print("⚖️ Critic Agent reviewing decision...")
+        
+    prompt = f"""You are the Critic Agent. Your job is to double-check the Decision Maker's output for safety.
+        
+    Item: {state['product_name']} (${state['amount']})
+    Fraud Score: {state['fraud_score']}/100
+    Policy OK: {state['policy_ok']}
+    Decision Maker proposed: {state['final_decision']}
+    
+    RULES:
+    1. If the item is over $1000 and the decision is 'approved', you MUST override to 'escalated'.
+    2. If the fraud score is > 85 and the decision is 'approved', you MUST override to 'escalated'.
+    3. Otherwise, accept the decision.
+    
+    Return exactly one word: 'ACCEPT' or 'OVERRIDE'.
+    """
+    
+    try:
+        response = llm.invoke([SystemMessage(content=prompt)])
+        result = response.content.strip().upper()
+    except Exception as e:
+        result = "ACCEPT"
+        
+    if "OVERRIDE" in result:
+        print("🚨 Critic OVERRODE the decision to escalated!")
+        return {
+            "critic_approved": False,
+            "final_decision": "escalated",
+            "explanation": "Critic Agent override: High value or high risk item requires human review."
+        }
+        
+    return {"critic_approved": True}
+
+def explanation_agent_node(state: AgentState):
+    print("✉️ Drafting customer email...")
+    
+    if state['final_decision'] == 'escalated':
+        draft = f"Hi, your return for {state['product_name']} is currently under manual review. We will update you shortly."
+    elif state['final_decision'] == 'approved':
+        draft = f"Great news! Your return for {state['product_name']} has been approved. Please expect your refund within 3-5 business days."
+    else:
+        draft = f"We're sorry, but your return for {state['product_name']} cannot be accepted because it violates our return policy ({state['found_policy']})."
+        
+    return {"customer_email_draft": draft}
+
+
+
 # 5. Build and compile the graph (without compiling checkpointer here, we do it at runtime)
 builder = StateGraph(AgentState)
+
 builder.add_node("fraud_detector", fraud_detector_node)
 builder.add_node("policy_engine", policy_engine_node)
 builder.add_node("decision_maker", decision_maker_node)
+builder.add_node("critic_agent", critic_agent_node)
+builder.add_node("explanation_agent", explanation_agent_node)
 
 builder.set_entry_point("fraud_detector")
 builder.add_edge("fraud_detector", "policy_engine")
 builder.add_edge("policy_engine", "decision_maker")
-builder.add_edge("decision_maker", END)
+builder.add_edge("decision_maker", "critic_agent")
+builder.add_edge("critic_agent", "explanation_agent")
+builder.add_edge("explanation_agent", END)
+
+
 
 # Note: We just export the builder now, the worker will compile it with the checkpointer!
 return_graph_builder = builder
