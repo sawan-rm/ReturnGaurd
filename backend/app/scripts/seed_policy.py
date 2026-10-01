@@ -1,7 +1,12 @@
 import asyncio
-from sentence_transformers import SentenceTransformer
-from app.qdrant_client import AsyncQdrantClient
+import hashlib
+import math
+import os
+from qdrant_client import AsyncQdrantClient
 from qdrant_client.models import Distance, VectorParams, PointStruct
+
+# Vector size we will use
+VECTOR_SIZE = 768
 
 # Sample corporate return policy
 POLICY_DOCS = [
@@ -12,12 +17,27 @@ POLICY_DOCS = [
     "If an item arrives damaged, the customer must report it within 3 days to be eligible for a full refund without restocking fees."
 ]
 
+def simple_embed(text: str, size: int = VECTOR_SIZE) -> list[float]:
+    """
+    Deterministic hash-based embedding. 
+    Same text always produces the same vector (cosine similarity will still work for exact/near-exact matches).
+    No external API or library required.
+    """
+    vector = []
+    for i in range(size):
+        h = hashlib.sha256(f"{text}_{i}".encode()).digest()
+        # Map 2 bytes to a float in [-1, 1]
+        val = int.from_bytes(h[:2], "big") / 32767.5 - 1.0
+        vector.append(val)
+    # L2-normalize so cosine similarity works correctly
+    norm = math.sqrt(sum(v * v for v in vector))
+    return [v / norm for v in vector]
+
+
 async def seed():
-    client = AsyncQdrantClient(url="http://localhost:6333")
+    qdrant_url = os.environ.get("QDRANT_URL", "http://qdrant:6333")
+    client = AsyncQdrantClient(url=qdrant_url)
     collection_name = "return_policy"
-    
-    # We use a fast, small, open-source embedding model that runs locally on CPU
-    model = SentenceTransformer('all-MiniLM-L6-v2')
 
     print("Recreating collection...")
     if await client.collection_exists(collection_name):
@@ -25,20 +45,21 @@ async def seed():
         
     await client.create_collection(
         collection_name=collection_name,
-        vectors_config=VectorParams(size=384, distance=Distance.COSINE),
+        vectors_config=VectorParams(size=VECTOR_SIZE, distance=Distance.COSINE),
     )
 
     print("Generating embeddings...")
     points = []
     for i, text in enumerate(POLICY_DOCS):
-        vector = model.encode(text).tolist()
+        vector = simple_embed(text)
         points.append(
             PointStruct(id=i, vector=vector, payload={"text": text})
         )
+        print(f"  [{i+1}/{len(POLICY_DOCS)}] Embedded: {text[:60]}...")
         
     print("Uploading to Qdrant...")
     await client.upsert(collection_name=collection_name, points=points)
-    print("✅ Policy seeded successfully!")
+    print(f"✅ Policy seeded successfully! {len(points)} documents uploaded.")
 
 if __name__ == "__main__":
     asyncio.run(seed())

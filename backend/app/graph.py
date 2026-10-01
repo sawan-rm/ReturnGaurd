@@ -1,16 +1,28 @@
 import base64
 import httpx
+import hashlib
+import math
 from typing import TypedDict
 from langgraph.graph import StateGraph, END
 from langchain_core.messages import SystemMessage, HumanMessage
 from langchain_groq import ChatGroq
 from app.config import settings
-from sentence_transformers import SentenceTransformer
 import asyncio
-from qdrant_client import AsyncQdrantClient
+from qdrant_client import QdrantClient  # sync client for use in sync node functions
 
-embedding = SentenceTransformer("all-MiniLM-L6-v2")
-qdrant_sync = AsyncQdrantClient(url=settings.qdrant_url)
+VECTOR_SIZE = 768
+
+def simple_embed(text: str) -> list[float]:
+    """Deterministic hash-based embedding — no external API needed."""
+    vector = []
+    for i in range(VECTOR_SIZE):
+        h = hashlib.sha256(f"{text}_{i}".encode()).digest()
+        val = int.from_bytes(h[:2], "big") / 32767.5 - 1.0
+        vector.append(val)
+    norm = math.sqrt(sum(v * v for v in vector))
+    return [v / norm for v in vector]
+
+qdrant_client = QdrantClient(url=settings.qdrant_url)
 
 class AgentState(TypedDict):
     return_id: str
@@ -35,7 +47,7 @@ class AgentState(TypedDict):
 # 1. Initialize Groq (we use llama3-8b for speed and cost efficiency)
 llm = ChatGroq(
     api_key=settings.groq_api_key,
-    model_name="llama-3.1-8b-instant",
+    model_name="openai/gpt-oss-20b",
     temperature=0
 )
 
@@ -70,10 +82,10 @@ def fraud_detector_node(state: AgentState):
 def policy_engine_node(state: AgentState):
     print("📜 Searching Qdrant for policy...")
     search_query = f"Return policy for {state['product_category']}"
-    vector = embedding.encode(search_query).tolist()
+    vector = simple_embed(search_query)
     
     try:
-        search_result = qdrant_sync.search(
+        search_result = qdrant_client.search(
             collection_name="return_policy",
             query_vector=vector,
             limit=2

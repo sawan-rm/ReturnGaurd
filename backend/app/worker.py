@@ -126,10 +126,9 @@ async def process_return(ctx, return_id: str):
             "explanation": "An error occurred during automated review. This return has been escalated for manual inspection.",
             "fraud_score": 50.0,
         }
-
-    final_decision = result_state["final_decision"]
-    explanation = result_state["explanation"]
-    fraud_score = result_state["fraud_score"]
+        final_decision = result_state["final_decision"]
+        explanation = result_state["explanation"]
+        fraud_score = result_state["fraud_score"]
 
     # ── 4. Map decision → ReturnStatus ────────────────────────────────────────
     status_map = {
