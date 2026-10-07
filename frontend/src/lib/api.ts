@@ -43,3 +43,20 @@ export async function createReturn(order_id: string, reason: string, token: stri
     if (!res.ok) throw new Error("Failed to create return");
     return res.json();
 }
+
+export async function resumeReturn(
+    return_id: string,
+    action: "confirm_deny" | "override_approve",
+    token: string
+): Promise<{ status: string; decision: string }> {
+    const res = await fetch(`${BASE}/returns/${return_id}/resume`, {
+        method: "POST",
+        headers: {
+            Authorization: `Bearer ${token}`,
+            "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ action }),
+    });
+    if (!res.ok) throw new Error("Failed to resume return");
+    return res.json();
+}

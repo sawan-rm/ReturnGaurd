@@ -15,7 +15,7 @@ export default function App({ kc }: Props) {
                 <Routes>
                     <Route path="/" element={<ShopPage />} />
                     <Route path="/returns/new" element={<NewReturnPage kc={kc} />} />
-                    <Route path="/reviewer" element={<ReviewerPage />} />
+                    <Route path="/reviewer" element={<ReviewerPage kc={kc} />} />
                 </Routes>
             </main>
         </BrowserRouter>

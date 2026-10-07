@@ -1,5 +1,7 @@
 import { useState, useEffect } from "react";
+import type Keycloak from "keycloak-js";
 import StatusBadge from "./StatusBadge";
+import { resumeReturn } from "../lib/api";
 
 interface ReturnRequest {
     id: string; order_id: string; reason: string;
@@ -7,8 +9,15 @@ interface ReturnRequest {
     status: string; risk_score: number | null; created_at: string;
 }
 
-export default function ReturnCard({ ret: initialRet }: { ret: ReturnRequest }) {
+interface Props {
+    ret: ReturnRequest;
+    kc?: Keycloak;
+    onUpdate?: () => void;
+}
+
+export default function ReturnCard({ ret: initialRet, kc, onUpdate }: Props) {
     const [ret, setRet] = useState(initialRet);
+    const [resuming, setResuming] = useState(false);
 
     useEffect(() => {
         const ws = new WebSocket("ws://localhost:8000/ws");
@@ -20,11 +29,24 @@ export default function ReturnCard({ ret: initialRet }: { ret: ReturnRequest }) 
         };
         return () => {
             if (ws.readyState === WebSocket.OPEN || ws.readyState === WebSocket.CONNECTING) {
-                // Delay close slightly to prevent closing before connection finishes establishing in strict mode
                 setTimeout(() => ws.close(), 100);
             }
         };
     }, [ret.id]);
+
+    const handleResume = async (action: "confirm_deny" | "override_approve") => {
+        if (!kc?.token) return alert("Not authenticated");
+        setResuming(true);
+        try {
+            await resumeReturn(ret.id, action, kc.token);
+            onUpdate?.();
+        } catch (err) {
+            console.error(err);
+            alert("Failed to resume return");
+        } finally {
+            setResuming(false);
+        }
+    };
 
     return (
         <div className="card" style={{ display: "flex", flexDirection: "column", gap: "0.75rem", transition: "all 0.3s" }}>
@@ -53,6 +75,34 @@ export default function ReturnCard({ ret: initialRet }: { ret: ReturnRequest }) 
                 )}
                 <span>{new Date(ret.created_at).toLocaleDateString()}</span>
             </div>
+
+            {/* HITL Buttons — only show for escalated returns */}
+            {ret.status === "escalated" && kc && (
+                <div style={{ display: "flex", gap: "0.75rem", marginTop: "0.25rem" }}>
+                    <button
+                        onClick={() => handleResume("confirm_deny")}
+                        disabled={resuming}
+                        style={{
+                            flex: 1, padding: "0.6rem", border: "none", borderRadius: "8px", cursor: "pointer",
+                            background: "var(--danger)", color: "white", fontWeight: 600, fontSize: "0.85rem",
+                            opacity: resuming ? 0.6 : 1,
+                        }}
+                    >
+                        {resuming ? "Processing..." : "✋ Confirm Denial"}
+                    </button>
+                    <button
+                        onClick={() => handleResume("override_approve")}
+                        disabled={resuming}
+                        style={{
+                            flex: 1, padding: "0.6rem", border: "none", borderRadius: "8px", cursor: "pointer",
+                            background: "var(--success)", color: "white", fontWeight: 600, fontSize: "0.85rem",
+                            opacity: resuming ? 0.6 : 1,
+                        }}
+                    >
+                        {resuming ? "Processing..." : "✅ Override → Approve"}
+                    </button>
+                </div>
+            )}
         </div>
     );
 }

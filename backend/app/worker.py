@@ -10,6 +10,7 @@ from app.config import settings
 from app.ws import broadcast_update
 from app.graph import return_graph_builder
 from app.email_service import send_decision_email
+from app.audit import get_prev_hash
 from langgraph.checkpoint.postgres.aio import AsyncPostgresSaver
 from psycopg_pool import AsyncConnectionPool
 
@@ -155,6 +156,7 @@ async def process_return(ctx, return_id: str):
             return_id=uuid.UUID(return_id),
             outcome=outcome,
             explanation=explanation,
+            prev_hash=await get_prev_hash(session),
         )
         session.add(decision)
         await session.commit()

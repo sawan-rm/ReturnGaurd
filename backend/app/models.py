@@ -88,6 +88,7 @@ class Decision(Base):
     explanation: Mapped[str] = mapped_column(Text, nullable=False)
     agent_trace_id: Mapped[str | None] = mapped_column(String(255), nullable=True)
     human_override: Mapped[bool | None] = mapped_column(default=False)
+    prev_hash: Mapped[str | None] = mapped_column(String(64), nullable=True)  # SHA-256 hash chain
     decided_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
     return_request: Mapped["ReturnRequest"] = relationship(back_populates="decision")

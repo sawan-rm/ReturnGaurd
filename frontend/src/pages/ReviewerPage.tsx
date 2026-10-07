@@ -1,18 +1,23 @@
 import { useState, useEffect } from "react";
+import type Keycloak from "keycloak-js";
 import ReturnCard from "../components/ReturnCard";
 import { listReturns } from "../lib/api";
 import type { ReturnRequest } from "../lib/api";
 
-export default function ReviewerPage() {
+interface Props { kc: Keycloak; }
+
+export default function ReviewerPage({ kc }: Props) {
     const [returns, setReturns] = useState<ReturnRequest[]>([]);
     const [loading, setLoading] = useState(true);
 
-    useEffect(() => {
+    const loadReturns = () => {
         listReturns()
             .then(setReturns)
             .catch(console.error)
             .finally(() => setLoading(false));
-    }, []);
+    };
+
+    useEffect(() => { loadReturns(); }, []);
 
     const counts = {
         total: returns.length,
@@ -46,7 +51,7 @@ export default function ReviewerPage() {
                 <div className="card" style={{ textAlign: "center", color: "var(--text-muted)", padding: "3rem" }}>No returns yet. Submit one from the shop!</div>
             ) : (
                 <div style={{ display: "flex", flexDirection: "column", gap: "1rem" }}>
-                    {returns.map(ret => <ReturnCard key={ret.id} ret={ret} />)}
+                    {returns.map(ret => <ReturnCard key={ret.id} ret={ret} kc={kc} onUpdate={loadReturns} />)}
                 </div>
             )}
         </div>
