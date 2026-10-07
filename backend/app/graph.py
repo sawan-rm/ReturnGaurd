@@ -178,6 +178,40 @@ def critic_agent_node(state: AgentState):
         
     return {"critic_approved": True}
 
+def opa_enforcement_node(state: AgentState):
+    print("🛡️ Checking Open Policy Agent (OPA) for compliance...")
+    
+    # We only care if the AI is trying to approve it. Denials and escalations are already safe.
+    if state['final_decision'] != 'approved':
+        return {}
+
+    payload = {
+        "input": {
+            "days_since_order": state['days_since_order'],
+            "fraud_score": state['fraud_score'],
+            "product_name": state['product_name']
+        }
+    }
+    
+    try:
+        # Use http://opa:8181 (the internal docker network hostname)
+        response = httpx.post("http://opa:8181/v1/data/returnguard/policy", json=payload, timeout=2.0)
+        if response.status_code == 200:
+            result = response.json()
+            allow = result.get("result", {}).get("allow", False)
+            violations = result.get("result", {}).get("violations", [])
+            
+            if not allow:
+                print(f"🛑 OPA OVERRIDE! AI tried to approve, but OPA denied. Violations: {violations}")
+                return {
+                    "final_decision": "escalated",
+                    "explanation": f"OPA Governance Override: Hard policy violation ({', '.join(violations)}). Escalated for human review."
+                }
+    except Exception as e:
+        print(f"⚠️ OPA check failed or OPA is unreachable: {e}")
+        
+    return {}
+
 def explanation_agent_node(state: AgentState):
     print("✉️ Drafting customer email...")
     
@@ -208,6 +242,7 @@ builder.add_node("fraud_detector", fraud_detector_node)
 builder.add_node("policy_engine", policy_engine_node)
 builder.add_node("decision_maker", decision_maker_node)
 builder.add_node("critic_agent", critic_agent_node)
+builder.add_node("opa_enforcement", opa_enforcement_node)
 builder.add_node("explanation_agent", explanation_agent_node)
 builder.add_node("governance_gate", governance_gate_node)
 
@@ -215,7 +250,8 @@ builder.set_entry_point("fraud_detector")
 builder.add_edge("fraud_detector", "policy_engine")
 builder.add_edge("policy_engine", "decision_maker")
 builder.add_edge("decision_maker", "critic_agent")
-builder.add_edge("critic_agent", "explanation_agent")
+builder.add_edge("critic_agent", "opa_enforcement")
+builder.add_edge("opa_enforcement", "explanation_agent")
 builder.add_conditional_edges("explanation_agent", route_after_explanation)
 builder.add_edge("governance_gate", END)
 

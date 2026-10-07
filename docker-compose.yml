@@ -119,6 +119,18 @@ services:
     volumes:
       - qdrant_data:/qdrant/storage
 
+  # ── OPA (Open Policy Agent) ───────────────
+  opa:
+    image: openpolicyagent/opa:latest-rootless
+    ports:
+      - "8181:8181"
+    command:
+      - "run"
+      - "--server"
+      - "--log-level=debug"
+      - "/policy.rego"
+    volumes:
+      - ./infra/opa/policy.rego:/policy.rego
 
 volumes:
   pg_data:
