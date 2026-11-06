@@ -11,13 +11,21 @@ export default function ReviewerPage({ kc }: Props) {
     const [loading, setLoading] = useState(true);
 
     const loadReturns = () => {
-        listReturns()
+        if (!kc.token) return;
+        listReturns(kc.token, "all")
             .then(setReturns)
             .catch(console.error)
             .finally(() => setLoading(false));
     };
 
-    useEffect(() => { loadReturns(); }, []);
+    // Auto-refresh every 5 seconds — reliable alternative to WebSocket in dev
+    useEffect(() => {
+        if (!kc.token) return;
+        const interval = setInterval(loadReturns, 5000);
+        return () => clearInterval(interval);
+    }, [kc.token]);
+
+    useEffect(() => { loadReturns(); }, [kc.token]);
 
     const counts = {
         total: returns.length,

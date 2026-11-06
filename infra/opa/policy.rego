@@ -1,24 +1,25 @@
 package returnguard.policy
 
-import rego.v1
-
 # By default, we do NOT allow the return
-default allow := false
+default allow = false
 
-# But we allow it if there are no violations
-allow if {
+# Allow if there are no violations
+allow {
     count(violations) == 0
 }
 
 # Define the rules for violations
-violations contains "item_outside_return_window" if {
+violations[msg] {
     input.days_since_order > 30
+    msg := "item_outside_return_window"
 }
 
-violations contains "fraud_score_too_high" if {
+violations[msg] {
     input.fraud_score > 80
+    msg := "fraud_score_too_high"
 }
 
-violations contains "clearance_items_final_sale" if {
+violations[msg] {
     contains(lower(input.product_name), "clearance")
+    msg := "clearance_items_final_sale"
 }

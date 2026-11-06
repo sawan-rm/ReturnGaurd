@@ -17,7 +17,7 @@ export default function NewReturnPage({ kc }: Props) {
 
     useEffect(() => {
         if (!kc.token) return;
-        listOrders(kc.token)
+        listOrders(kc.token, "all")
             .then(setOrders)
             .catch(() => setError("Could not load orders."));
     }, [kc.token]);

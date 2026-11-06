@@ -8,7 +8,8 @@ export default function ReturnCard({ ret: initialRet }: { ret: ReturnRequest }) 
 
     useEffect(() => {
         // Listen for WebSocket updates
-        const ws = new WebSocket("ws://localhost:8000/ws");
+        const wsProtocol = window.location.protocol === "https:" ? "wss:" : "ws:";
+        const ws = new WebSocket(`${wsProtocol}//${window.location.host}/ws`);
 
         ws.onmessage = (event) => {
             const update = JSON.parse(event.data);

@@ -36,6 +36,11 @@ services:
   worker:
     build: ./backend
     command: arq app.worker.WorkerSettings
+
+    # 👇 ADDING THESE TWO LINES EXPLICITLY SETS THE NUMBER OF WORKERS
+    # deploy:
+    #   replicas: 3 
+
     env_file: .env
     environment:
       DATABASE_URL: "postgresql+asyncpg://returnguard:returnguard_secret@postgres:5432/returnguard"

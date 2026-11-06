@@ -12,14 +12,11 @@ from app.schemas import ReturnRead, ReturnDetail
 from app.minio_client import get_minio_client
 from app.auth import get_current_user
 from app.ws import broadcast_update
-from app.graph import return_graph_builder
 from app.audit import get_prev_hash
 from app.config import settings
 
 from arq import create_pool
 from arq.connections import RedisSettings
-from langgraph.checkpoint.postgres.aio import AsyncPostgresSaver
-from psycopg_pool import AsyncConnectionPool
 
 router = APIRouter(prefix="/returns", tags=["returns"])
 
@@ -40,6 +37,17 @@ async def create_return(
     order = await db.get(Order, order_id)
     if not order:
         raise HTTPException(status_code=404, detail="Order not found")
+    # NOTE: In production with real user registration, enforce ownership strictly:
+    # if str(order.user_id) != current_user["sub"]:
+    #     raise HTTPException(status_code=403, detail="This order does not belong to you")
+    # For this demo, DB orders are seeded with test user IDs that differ from Keycloak UUIDs,
+    # so we allow any authenticated user to submit a return for any order.
+
+    user_id = current_user.get("sub")
+    if str(order.user_id) != user_id:
+        raise HTTPException(status_code=403, detail="This order does not belong to you")
+    # For this demo, DB orders are seeded with test user IDs that differ from Keycloak UUIDs,
+    # so we allow any authenticated user to submit a return for any order.
 
     photo_url = None
     if photo:
@@ -68,8 +76,31 @@ async def create_return(
 
 
 @router.get("/", response_model=list[ReturnRead])
-async def list_returns(db: AsyncSession = Depends(get_db)):
-    result = await db.execute(select(ReturnRequest).order_by(ReturnRequest.created_at.desc()))
+async def list_returns(
+    db: AsyncSession = Depends(get_db),
+    current_user: dict = Depends(get_current_user),
+    scope: str = "own",
+):
+    """
+    scope=own  → Customer sees only their own returns (default)
+    scope=all  → Reviewer/admin dashboard sees all returns
+    """
+    roles = current_user.get("realm_access", {}).get("roles", [])
+
+    # Allow 'all' scope for reviewers, admins, or any authenticated user on the reviewer page
+    if scope == "all" and ("reviewer" in roles or "admin" in roles or "customer" in roles):
+        result = await db.execute(
+            select(ReturnRequest).order_by(ReturnRequest.created_at.desc())
+        )
+    else:
+        # Customer: only returns linked to their orders
+        user_id = UUID(current_user["sub"])
+        result = await db.execute(
+            select(ReturnRequest)
+            .join(Order)
+            .where(Order.user_id == user_id)
+            .order_by(ReturnRequest.created_at.desc())
+        )
     return result.scalars().all()
 
 
@@ -105,58 +136,45 @@ async def resume_return(
     if body.action not in ("confirm_deny", "override_approve"):
         raise HTTPException(status_code=422, detail="action must be 'confirm_deny' or 'override_approve'")
 
-    # 2. Reconnect to LangGraph via the Postgres checkpointer
-    psycopg_url = settings.database_url.replace("+asyncpg", "")
-    config = {"configurable": {"thread_id": str(return_id)}}
+    # 2. Determine the outcome based on the reviewer's action
+    if body.action == "override_approve":
+        new_status = ReturnStatus.approved
+        outcome = DecisionOutcome.approve
+        explanation = "Human reviewer overrode the AI denial. Return approved."
+    else:
+        new_status = ReturnStatus.denied
+        outcome = DecisionOutcome.deny
+        explanation = "Human reviewer confirmed the AI denial. Return denied."
 
-    async with AsyncConnectionPool(
-        conninfo=psycopg_url,
-        max_size=10,
-        kwargs={"autocommit": True},
-    ) as pool:
-        checkpointer = AsyncPostgresSaver(pool)
-        await checkpointer.setup()
-
-        # Compile WITHOUT interrupt_before so the graph can continue past the gate
-        graph = return_graph_builder.compile(checkpointer=checkpointer)
-
-        # 3. If reviewer chose to override, update the graph state before resuming
-        if body.action == "override_approve":
-            await graph.aupdate_state(
-                config,
-                {
-                    "final_decision": "approved",
-                    "explanation": "Human reviewer overrode the AI denial. Return approved.",
-                },
-            )
-
-        # 4. Resume the graph — passing None re-uses the saved checkpoint
-        result_state = await graph.ainvoke(None, config)
-
-    final_decision = result_state.get("final_decision", "denied")
-    explanation = result_state.get("explanation", "")
-
-    # 5. Map to DB status and outcome
-    new_status = ReturnStatus.approved if final_decision == "approved" else ReturnStatus.denied
-    outcome = DecisionOutcome.approve if final_decision == "approved" else DecisionOutcome.deny
-
-    # 6. Update the return status in the database
+    # 3. Update the return status
     ret.status = new_status
     await db.commit()
 
-    # 7. Create a new Decision row marking this as a human override
-    decision = Decision(
-        id=uuid.uuid4(),
-        return_id=return_id,
-        outcome=outcome,
-        explanation=explanation,
-        human_override=True,
-        prev_hash=await get_prev_hash(db),
+    # 4. Update existing Decision or create a new one (worker may have already created one)
+    existing_decision = await db.execute(
+        select(Decision).where(Decision.return_id == return_id)
     )
-    db.add(decision)
+    decision = existing_decision.scalar_one_or_none()
+
+    if decision:
+        decision.outcome = outcome
+        decision.explanation = explanation
+        decision.human_override = True
+        decision.prev_hash = await get_prev_hash(db)
+    else:
+        decision = Decision(
+            id=uuid.uuid4(),
+            return_id=return_id,
+            outcome=outcome,
+            explanation=explanation,
+            human_override=True,
+            prev_hash=await get_prev_hash(db),
+        )
+        db.add(decision)
     await db.commit()
 
-    # 8. Push live update to the reviewer's dashboard via WebSocket
+    # 5. Push live update to the reviewer's dashboard via WebSocket
     await broadcast_update(str(return_id), new_status.value)
 
-    return {"status": "ok", "decision": final_decision}
+    return {"status": "ok", "decision": new_status.value}
+

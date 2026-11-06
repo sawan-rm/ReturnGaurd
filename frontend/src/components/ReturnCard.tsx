@@ -19,20 +19,8 @@ export default function ReturnCard({ ret: initialRet, kc, onUpdate }: Props) {
     const [ret, setRet] = useState(initialRet);
     const [resuming, setResuming] = useState(false);
 
-    useEffect(() => {
-        const ws = new WebSocket("ws://localhost:8000/ws");
-        ws.onmessage = (event) => {
-            const update = JSON.parse(event.data);
-            if (update.id === ret.id) {
-                setRet(prev => ({ ...prev, status: update.status, risk_score: update.risk_score ?? prev.risk_score }));
-            }
-        };
-        return () => {
-            if (ws.readyState === WebSocket.OPEN || ws.readyState === WebSocket.CONNECTING) {
-                setTimeout(() => ws.close(), 100);
-            }
-        };
-    }, [ret.id]);
+    // Sync if parent updates the prop (e.g. from page-level WebSocket)
+    useEffect(() => { setRet(initialRet); }, [initialRet]);
 
     const handleResume = async (action: "confirm_deny" | "override_approve") => {
         if (!kc?.token) return alert("Not authenticated");
@@ -76,8 +64,8 @@ export default function ReturnCard({ ret: initialRet, kc, onUpdate }: Props) {
                 <span>{new Date(ret.created_at).toLocaleDateString()}</span>
             </div>
 
-            {/* HITL Buttons — only show for escalated returns */}
-            {ret.status === "escalated" && kc && (
+            {/* HITL Buttons — only show for escalated returns AND reviewer/admin role */}
+            {ret.status === "escalated" && kc && (kc.hasRealmRole("reviewer") || kc.hasRealmRole("admin")) && (
                 <div style={{ display: "flex", gap: "0.75rem", marginTop: "0.25rem" }}>
                     <button
                         onClick={() => handleResume("confirm_deny")}

@@ -13,16 +13,18 @@ export interface Order {
     product_category: string; amount: number; ordered_at: string;
 }
 
-export async function listOrders(token: string): Promise<Order[]> {
-    const res = await fetch(`${BASE}/orders/`, {
+export async function listOrders(token: string, scope: "own" | "all" = "all"): Promise<Order[]> {
+    const res = await fetch(`${BASE}/orders/?scope=${scope}`, {
         headers: { Authorization: `Bearer ${token}` },
     });
     if (!res.ok) throw new Error("Failed to fetch orders");
     return res.json();
 }
 
-export async function listReturns(): Promise<ReturnRequest[]> {
-    const res = await fetch(`${BASE}/returns/`);
+export async function listReturns(token: string, scope: "own" | "all" = "own"): Promise<ReturnRequest[]> {
+    const res = await fetch(`${BASE}/returns/?scope=${scope}`, {
+        headers: { Authorization: `Bearer ${token}` },
+    });
     if (!res.ok) throw new Error("Failed to fetch returns");
     return res.json();
 }

@@ -176,14 +176,14 @@ def critic_agent_node(state: AgentState):
             "explanation": "Critic Agent override: High value or high risk item requires human review."
         }
         
-    return {"critic_approved": True}
+    return {"critic_approved": True, "final_decision": state["final_decision"]}
 
 def opa_enforcement_node(state: AgentState):
     print("🛡️ Checking Open Policy Agent (OPA) for compliance...")
     
     # We only care if the AI is trying to approve it. Denials and escalations are already safe.
     if state['final_decision'] != 'approved':
-        return {}
+        return {"final_decision": state["final_decision"]}
 
     payload = {
         "input": {
@@ -209,8 +209,8 @@ def opa_enforcement_node(state: AgentState):
                 }
     except Exception as e:
         print(f"⚠️ OPA check failed or OPA is unreachable: {e}")
-        
-    return {}
+
+    return {"final_decision": state["final_decision"]}
 
 def explanation_agent_node(state: AgentState):
     print("✉️ Drafting customer email...")
@@ -226,7 +226,7 @@ def explanation_agent_node(state: AgentState):
 
 def governance_gate_node(state: AgentState):
     print("🔒 Human approved the denial! Governance Gate passed.")
-    return {}
+    return {"final_decision": state["final_decision"]}
 
 def route_after_explanation(state: AgentState):
     if state['final_decision'] == 'denied':

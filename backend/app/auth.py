@@ -18,6 +18,8 @@ async def get_current_user(credentials: HTTPAuthorizationCredentials = Depends(s
 
         # 2. Get the key ID from our token header
         unverified_header = jwt.get_unverified_header(token)
+
+        # JWKS contains multiple public keys → rsa_key holds the matching key → jwt.decode() uses that key to verify the token.
         rsa_key = {}
         for key in jwks["keys"]:
             if key["kid"] == unverified_header["kid"]:
