@@ -1,7 +1,8 @@
+from datetime import timedelta
 import asyncio
 import uuid
-from datetime import datetime, timezone
-from arq import Worker
+from datetime import datetime, timezone, timedelta
+from arq import Worker, cron
 from arq.connections import RedisSettings
 from sqlalchemy import select
 from app.database import async_session
@@ -19,11 +20,24 @@ async def process_return(ctx, return_id: str):
 
     # ── 1. Mark as "processing" immediately ──────────────────────────────────
     async with async_session() as session:
-        ret = await session.get(ReturnRequest, return_id)
+        # SELECT ... FOR UPDATE SKIP LOCKED
+        # If another worker already locked this row, this returns None immediately.
+        stmt = select(ReturnRequest).where(
+            ReturnRequest.id == uuid.UUID(return_id),
+            ReturnRequest.status == ReturnStatus.pending # Only pick up pending jobs
+        ).with_for_update(skip_locked=True)
+
+        result = await session.execute(stmt)
+        ret = result.scalar_one_or_none()
+
+        # ret = await session.get(ReturnRequest, return_id)
         if not ret:
-            print(f"❌ Return {return_id} not found!")
+            print(f"⏭️ Return {return_id} is already processing or not found. Skipping safely.")
             return
+        
+        # Claim the job and start the timer for the cron monitor
         ret.status = ReturnStatus.processing
+        ret.started_processing_at = datetime.now(timezone.utc)
         
         # Pre-load the order for the graph
         order = await session.get(Order, ret.order_id)
@@ -150,6 +164,7 @@ async def process_return(ctx, return_id: str):
         ret = await session.get(ReturnRequest, return_id)
         ret.status = new_status
         ret.risk_score = round(fraud_score / 100, 4)
+        ret.started_processing_at = None # Clear the timer so cron ignores it!
 
         decision = Decision(
             id=uuid.uuid4(),
@@ -184,8 +199,41 @@ async def process_return(ctx, return_id: str):
 
     # ── 7. Broadcast live update to the frontend ──────────────────────────────
     await broadcast_update(return_id, new_status.value, round(fraud_score / 100, 4))
+    
+    # ── 8. The Cron Rescue Monitor ──────────────────────────────────────────────
+async def check_stalled_jobs(ctx):
+    """Scans for jobs stuck in 'processing' for > 5 minutes and rescues them."""
+    print("🧹 Running cron rescue monitor...")
+    redis = ctx['redis']
+
+    async with async_session() as session:
+        stale_threshold = datetime.now(timezone.utc) - timedelta(minutes=5)
+        
+        # Find rows stuck in processing where the timer expired
+        stmt = select(ReturnRequest).where(
+            ReturnRequest.status == ReturnStatus.processing,
+            ReturnRequest.started_processing_at < stale_threshold
+        )
+        result = await session.execute(stmt)
+        stalled_returns = result.scalars().all()
+        
+        for ret in stalled_returns:
+            print(f"🚑 Rescuing crashed job: {ret.id}. Re-enqueueing to Redis.")
+            # Reset state so a healthy worker can grab it
+            ret.status = ReturnStatus.pending
+            ret.started_processing_at = None
+            
+            # Re-inject into the queue
+            await redis.enqueue_job('process_return', str(ret.id))
+            
+        await session.commit()
 
 
 class WorkerSettings:
     functions = [process_return]
+    # Run the rescue sweep every 60 seconds
+    corn_jobs = [cron(check_stalled_jobs, second=0)]
     redis_settings = RedisSettings.from_dsn(settings.redis_url)
+
+    # Stop Redis from unlocking the message for 5 minutes during heavy AI tasks
+    job_timeout = 300

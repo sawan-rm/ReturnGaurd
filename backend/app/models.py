@@ -1,6 +1,6 @@
 import uuid
 from datetime import datetime
-from sqlalchemy import String, Float, Text, ForeignKey, Enum as SAEnum, DateTime, func
+from sqlalchemy import String, Float, Text, ForeignKey, Enum as SAEnum, DateTime, func, Column
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
 import enum
@@ -77,6 +77,9 @@ class ReturnRequest(Base):
 
     order: Mapped["Order"] = relationship(back_populates="returns")
     decision: Mapped["Decision | None"] = relationship(back_populates="return_request", uselist=False)
+   
+    # Add this to track how long a job has been in the 'processing' state
+    started_processing_at = Column(DateTime(timezone=True), nullable=True)
 
 
 class Decision(Base):
